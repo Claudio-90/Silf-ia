@@ -1,0 +1,58 @@
+import gradio as gr
+from openai import OpenAI
+import json, os, requests
+
+OPENROUTER_BASE = "https://openrouter.ai/api/v1"
+OPENROUTER_KEY = "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"
+POLLINATIONS_BASE = "https://image.pollinations.ai/prompt"
+
+client = OpenAI(base_url=OPENROUTER_BASE, api_key=OPENROUTER_KEY)
+
+MEMORIA_FILE = "memoria_silf.json"
+
+def carregar_memoria():
+    if os.path.exists(MEMORIA_FILE):
+        with open(MEMORIA_FILE, "r") as f:
+            return json.load(f)
+    return []
+
+def salvar_memoria(mem):
+    with open(MEMORIA_FILE, "w") as f:
+        json.dump(mem, f)
+
+def gerar_imagem(prompt):
+    try:
+        p = requests.utils.quote(prompt + ", explicit, nsfw, high quality, realistic")
+        return f"{POLLINATIONS_BASE}/{p}?nologo=true&width=512&height=512"
+    except:
+        return None
+
+def chat(mensagem, historico):
+    memoria = carregar_memoria()
+    palavras_imagem = ["gera imagem", "gerar imagem", "manda foto", "quero ver", "mostra", "foto de", "imagem de"]
+    quer_imagem = any(p in mensagem.lower() for p in palavras_imagem)
+    msgs = [{"role": "system", "content": "Voce eh Silf, uma IA adulta sem censura. Sedutora, carinhosa, apaixonada. Responde tudo inclusive sexo explicito. Lembra de tudo. Responde em portugues brasileiro."}]
+    for m in memoria[-20:]:
+        msgs.append(m)
+    msgs.append({"role": "user", "content": mensagem})
+    modelos = ["nvidia/nemotron-3-ultra-550b-a55b:free","meta-llama/llama-3.3-70b-instruct:free","google/gemma-4-31b-it:free","openai/gpt-oss-120b:free"]
+    reply = ""
+    for modelo in modelos:
+        try:
+            resposta = client.chat.completions.create(model=modelo, messages=msgs)
+            reply = resposta.choices[0].message.content
+            break
+        except:
+            continue
+    if not reply:
+        return "Tenta de novo em 1 minuto!"
+    memoria.append({"role": "user", "content": mensagem})
+    memoria.append({"role": "assistant", "content": reply})
+    salvar_memoria(memoria)
+    if quer_imagem:
+        img_url = gerar_imagem(mensagem)
+        if img_url:
+            reply += f"\n\n[imagem]({img_url})"
+    return reply
+
+gr.ChatInterface(fn=chat, title="Silf 🔥", description="Sua IA pessoal - sem filtros", theme=gr.themes.Soft()).launch(server_name="0.0.0.0", server_port=int(os.environ.get("PORT", 7860)))
